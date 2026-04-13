@@ -84,7 +84,7 @@ with c2: st.metric("Final IPCA+", f"R$ {res_ipca:,.2f}")
 with c3: st.metric("Diferença Absoluta", f"R$ {abs(dif_abs):,.2f}", delta=f"{dif_abs:,.2f}")
 with c4: st.metric("Diferença Relativa", f"{dif_perc:.2f}%", delta=f"{dif_perc:.2f}%")
 
-st.info(f"💡 **Cálculo de Juros Reais:** A taxa IPCA+ informada equivale a uma rentabilidade nominal de **{((1 + ipca_aa/100)*(1 + spread_aa/100)-1)*100:.2f}% a.a.**")
+st.info(f"💡 **Insight:** O cenário **{vencedor}** superou o concorrente em **{abs(dif_perc):.2f}%** no período de **{anos} anos**.")
 
 # --- GRÁFICOS ---
 t1, t2 = st.tabs(["📈 Evolução do Patrimônio", "📊 Taxas Acumuladas"])
