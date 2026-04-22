@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
-from datetime import datetime
+from datetime import datetime, date
 from fpdf import FPDF
 import os
 
@@ -39,7 +39,7 @@ def carregar_dias_uteis(data_inicio, data_fim):
     return dias_uteis
 
 def gerar_pdf(df_anual, df_diario, params):
-    """Gera PDF usando Matplotlib para o gráfico (evita erro de dependência Kaleido/Browser)"""
+    """Gera PDF usando Matplotlib para o gráfico"""
     pdf = FPDF()
     pdf.add_page()
     
@@ -57,7 +57,7 @@ def gerar_pdf(df_anual, df_diario, params):
     pdf.cell(200, 8, f"Vencedor: {params['vencedor']}", ln=True)
     pdf.cell(200, 8, f"Rentabilidade Adicional: R$ {abs(params['dif_abs']):,.2f} ({params['dif_perc']:.2f}%)", ln=True)
     
-    # Gerar gráfico temporário com Matplotlib (seguro para Linux Slim)
+    # Gerar gráfico temporário
     plt.figure(figsize=(10, 5))
     plt.plot(df_diario["Data"], df_diario["Montante CDI"], label="CDI", color='#00d4ff', linewidth=2)
     plt.plot(df_diario["Data"], df_diario["Montante IPCA+"], label="IPCA + Spread", color='#ff4b4b', linewidth=2)
@@ -87,7 +87,6 @@ def gerar_pdf(df_anual, df_diario, params):
         pdf.cell(75, 10, f"R$ {row['Montante CDI']:,.2f}", 1, 0, 'C')
         pdf.cell(75, 10, f"R$ {row['Montante IPCA+']:,.2f}", 1, 1, 'C')
     
-    # Limpeza
     res = pdf.output(dest='S').encode('latin-1')
     if os.path.exists("chart_export.png"):
         os.remove("chart_export.png")
@@ -98,9 +97,15 @@ with st.sidebar:
     st.header("⚙️ Parâmetros")
     val_inicial = st.number_input("Capital Inicial (R$)", min_value=0.0, value=100000.0)
     
+    # DEFINIÇÃO DE LIMITES DE DATA PARA EVITAR O ERRO DO COMPONENTE
+    min_data = date(2000, 1, 1)
+    max_data = date(2100, 12, 31) # Aqui você define o limite que desejar
+    
     c1, c2 = st.columns(2)
-    with c1: data_aporte = st.date_input("Data de Aporte", datetime.now())
-    with c2: data_vencimento = st.date_input("Vencimento", datetime(2029, 12, 31))
+    with c1: 
+        data_aporte = st.date_input("Data de Aporte", datetime.now(), min_value=min_data, max_value=max_data)
+    with c2: 
+        data_vencimento = st.date_input("Vencimento", date(2029, 12, 31), min_value=min_data, max_value=max_data)
     
     st.subheader("Taxas Esperadas (% a.a.)")
     cdi_aa = st.number_input("CDI Esperado", value=14.75)
@@ -135,53 +140,56 @@ else:
             "Montante IPCA+": s_ipca
         })
 
-    df_diario = pd.DataFrame(evolucao_diaria)
-    df_anual = df_diario.groupby('Ano').last().reset_index()
+    if not evolucao_diaria:
+        st.warning("Nenhum dia útil encontrado no período selecionado.")
+    else:
+        df_diario = pd.DataFrame(evolucao_diaria)
+        df_anual = df_diario.groupby('Ano').last().reset_index()
 
-    # KPIs Finais
-    res_cdi = s_cdi
-    res_ipca = s_ipca
-    dif_abs = res_ipca - res_cdi
-    dif_perc = (res_ipca / res_cdi - 1) * 100
-    vencedor = "IPCA + Spread" if res_ipca > res_cdi else "CDI"
+        # KPIs Finais
+        res_cdi = s_cdi
+        res_ipca = s_ipca
+        dif_abs = res_ipca - res_cdi
+        dif_perc = (res_ipca / res_cdi - 1) * 100
+        vencedor = "IPCA + Spread" if res_ipca > res_cdi else "CDI"
 
-    # --- INTERFACE DE RESULTADOS ---
-    st.title("📊 Simulador de Ativos Renda Fixa")
-    
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Final CDI", f"R$ {res_cdi:,.2f}")
-    k2.metric("Final IPCA+", f"R$ {res_ipca:,.2f}")
-    k3.metric("Diferença Absoluta", f"R$ {abs(dif_abs):,.2f}", delta=f"{dif_abs:,.2f}")
-    k4.metric("Diferença Relativa", f"{dif_perc:.2f}%", delta=f"{dif_perc:.2f}%")
+        # --- INTERFACE DE RESULTADOS ---
+        st.title("📊 Simulador de Ativos Renda Fixa")
+        
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Final CDI", f"R$ {res_cdi:,.2f}")
+        k2.metric("Final IPCA+", f"R$ {res_ipca:,.2f}")
+        k3.metric("Diferença Absoluta", f"R$ {abs(dif_abs):,.2f}", delta=f"{dif_abs:,.2f}")
+        k4.metric("Diferença Relativa", f"{dif_perc:.2f}%", delta=f"{dif_perc:.2f}%")
 
-    st.info(f"💡 **Insight:** O cenário **{vencedor}** superou o concorrente em **{abs(dif_perc):.2f}%** no período.")
+        st.info(f"💡 **Insight:** O cenário **{vencedor}** superou o concorrente em **{abs(dif_perc):.2f}%** no período.")
 
-    # Gráfico Plotly (Para visualização no Browser)
-    fig_plotly = go.Figure()
-    fig_plotly.add_trace(go.Scatter(x=df_diario["Data"], y=df_diario["Montante CDI"], name="CDI", line=dict(color='#00d4ff')))
-    fig_plotly.add_trace(go.Scatter(x=df_diario["Data"], y=df_diario["Montante IPCA+"], name="IPCA+", line=dict(color='#ff4b4b')))
-    fig_plotly.update_layout(title="Evolução Patrimonial Diária", template="plotly_white", hovermode="x unified")
-    st.plotly_chart(fig_plotly, use_container_width=True)
+        # Gráfico Plotly
+        fig_plotly = go.Figure()
+        fig_plotly.add_trace(go.Scatter(x=df_diario["Data"], y=df_diario["Montante CDI"], name="CDI", line=dict(color='#00d4ff')))
+        fig_plotly.add_trace(go.Scatter(x=df_diario["Data"], y=df_diario["Montante IPCA+"], name="IPCA+", line=dict(color='#ff4b4b')))
+        fig_plotly.update_layout(title="Evolução Patrimonial Diária", template="plotly_white", hovermode="x unified")
+        st.plotly_chart(fig_plotly, use_container_width=True)
 
-    # Botão de Exportação
-    params_pdf = {
-        "valor": val_inicial, "inicio": data_aporte, "fim": data_vencimento,
-        "dias_uteis": total_dias_uteis, "vencedor": vencedor,
-        "dif_abs": dif_abs, "dif_perc": dif_perc
-    }
+        # Botão de Exportação
+        params_pdf = {
+            "valor": val_inicial, "inicio": data_aporte, "fim": data_vencimento,
+            "dias_uteis": total_dias_uteis, "vencedor": vencedor,
+            "dif_abs": dif_abs, "dif_perc": dif_perc
+        }
 
-    if st.button("📄 Gerar Relatório PDF Completo"):
-        with st.spinner("Gerando PDF..."):
-            pdf_bytes = gerar_pdf(df_anual, df_diario, params_pdf)
-            st.download_button(
-                label="📥 Clique aqui para baixar o PDF",
-                data=pdf_bytes,
-                file_name=f"Relatorio_Investimento_{vencedor}.pdf",
-                mime="application/pdf"
-            )
+        if st.button("📄 Gerar Relatório PDF Completo"):
+            with st.spinner("Gerando PDF..."):
+                pdf_bytes = gerar_pdf(df_anual, df_diario, params_pdf)
+                st.download_button(
+                    label="📥 Clique aqui para baixar o PDF",
+                    data=pdf_bytes,
+                    file_name=f"Relatorio_Investimento_{vencedor}.pdf",
+                    mime="application/pdf"
+                )
 
-    with st.expander("📄 Ver Tabela de Evolução Anual"):
-        st.table(df_anual.style.format({
-            "Montante CDI": "R$ {:,.2f}",
-            "Montante IPCA+": "R$ {:,.2f}"
-        }))
+        with st.expander("📄 Ver Tabela de Evolução Anual"):
+            st.table(df_anual.style.format({
+                "Montante CDI": "R$ {:,.2f}",
+                "Montante IPCA+": "R$ {:,.2f}"
+            }))
